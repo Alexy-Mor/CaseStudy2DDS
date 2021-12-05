@@ -1,0 +1,158 @@
+---
+title: "CaseStudy2"
+author: "Alexy Morris"
+date: "12/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE}
+library(readr)
+library(ggplot2)
+library(dplyr)
+case <- read_csv("https://raw.githubusercontent.com/BivinSadler/MSDS_6306_Doing-Data-Science/Master/Unit%2014%20and%2015%20Case%20Study%202/CaseStudy2-data.csv")
+case2 = case
+
+case2$BusinessTravel = as.numeric(c("Non-Travel" = "0", "Travel_Rarely" = "1", "Travel_Frequently" = "2")[case2$BusinessTravel])
+case2$OverTime = as.numeric(c("No" = "0", "Yes" = "1")[case2$OverTime])
+```
+
+```{r, echo=FALSE}
+case2cut = subset(case2, select = -c(Over18, StandardHours, Gender, MaritalStatus, EmployeeCount, Age, Department, Education, EducationField, JobLevel, JobRole, OverTime, EmployeeNumber, ID))
+case2cut$Attrition = as.numeric(c("No" = "1", "Yes" = "0")[case2$Attrition])
+
+head(case2cut)
+
+library(olsrr)
+LM = lm(Attrition~., case2cut)
+ols_step_backward_p(LM, prem = .05, details = TRUE)
+
+
+case2attritionfit = lm(Attrition ~ BusinessTravel + DistanceFromHome + EnvironmentSatisfaction + JobInvolvement + JobSatisfaction + NumCompaniesWorked + RelationshipSatisfaction + StockOptionLevel + TotalWorkingYears + TrainingTimesLastYear +  WorkLifeBalance + YearsInCurrentRole + YearsSinceLastPromotion, case2cut)
+
+library(coefplot)
+coefplot(case2attritionfit, color = "Red")
+```
+
+```{r, echo=FALSE}
+case2bigcut = subset(case2, select = c(BusinessTravel, DistanceFromHome, EnvironmentSatisfaction, JobInvolvement, JobSatisfaction, NumCompaniesWorked, RelationshipSatisfaction, StockOptionLevel, TotalWorkingYears, TrainingTimesLastYear,  WorkLifeBalance, YearsInCurrentRole, YearsSinceLastPromotion, Attrition))
+
+
+library(GGally)
+ggpairs(case2bigcut, columns = 2:14, ggplot2::aes(colour=Attrition))
+```
+
+```{r, echo=FALSE}
+library(class)
+library(caret)
+library(e1071) 
+
+set.seed(6)
+splitPerc = .62
+trainIndices = sample(1:570)
+train = case2bigcut[trainIndices,]
+test = case2bigcut[-trainIndices,] 
+
+newtest <- read_csv("https://raw.githubusercontent.com/BivinSadler/MSDS_6306_Doing-Data-Science/Master/Unit%2014%20and%2015%20Case%20Study%202/CaseStudy2CompSet%20No%20Attrition.csv")
+newtest = subset(newtest, select = c(BusinessTravel, DistanceFromHome, EnvironmentSatisfaction, JobInvolvement, JobSatisfaction, NumCompaniesWorked, RelationshipSatisfaction, StockOptionLevel, TotalWorkingYears, TrainingTimesLastYear,  WorkLifeBalance, YearsInCurrentRole, YearsSinceLastPromotion, ID))
+newtest$BusinessTravel = as.numeric(c("Non-Travel" = "0", "Travel_Rarely" = "1", "Travel_Frequently" = "2")[newtest$BusinessTravel])
+
+Attritionknn = knn(train = train[,c(1:13)] , test = newtest[,c(1:13)] , cl = train$Attrition, k = 14,prob=TRUE)
+newtest$AttritionPrediction = Attritionknn
+
+```
+
+```{r, echo=FALSE}
+Case2AttritionPredictions = subset(newtest, select = c(ID, AttritionPrediction))
+
+print(head(Case2AttritionPredictions))
+```
+
+```{r, echo=FALSE}
+library(olsrr)
+fit = lm(MonthlyIncome~., case2cut)
+ols_step_backward_p(fit, prem = .05, details = TRUE)
+
+case2Incomefit = lm(MonthlyIncome ~ NumCompaniesWorked + TotalWorkingYears + YearsWithCurrManager, case2cut)
+plot(case2Incomefit)
+```
+
+```{r, echo=FALSE}
+library(readxl)
+SalaryPredictions <- read_excel("C:/Users/Alex M/Downloads/CaseStudy2CompSet No Salary.xlsx")
+SalaryPredictions$ModeledSalary = predict(case2Incomefit, newdata = SalaryPredictions)
+SalaryPredictions = subset(SalaryPredictions, select = c(ID, ModeledSalary))
+head(SalaryPredictions)
+
+```
+
+```{r, echo=FALSE}
+case2 %>% group_by(Department) %>% tally() #3 levels, doughnuts plot, salary/rate/salaryhike
+
+case2Departmentcut = subset(case2, select = c(Department, Education))
+
+library(ggplot2)
+library(dplyr)
+library(hrbrthemes)
+
+# Represent it
+p <- ggplot(data=case2Departmentcut, aes(x=Education, group=Department, fill=Department)) +
+    geom_density(adjust=1.5, alpha=.5) +
+    theme_ipsum()
+p
+
+```
+
+```{r, echo=FALSE}
+case2 %>% group_by(JobRole) %>% tally() 
+
+library(ggridges)
+library(viridis)
+
+ggplot(case2, aes(x = MonthlyIncome, y = JobRole, fill = ..x..)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
+  scale_fill_viridis(name = "Income", option = "C") +
+  labs(title = 'The Salary Distribution Of each represented Job Role') +
+  theme_ipsum() +
+    theme(
+      legend.position="none",
+      panel.spacing = unit(0.1, "lines"),
+      strip.text.x = element_text(size = 8)
+    )
+
+```
+
+```{r, echo=FALSE}
+case2 %>% group_by(JobLevel) %>% tally()
+
+case2JobLevelcut = subset(case2, select = c(JobLevel, Gender, Age, WorkLifeBalance, MonthlyIncome))
+
+case2JobLevelcut %>%
+  arrange(desc(JobLevel)) %>%
+  ggplot(aes(x=Age, y=MonthlyIncome, size=JobLevel, color=Gender)) +
+    geom_point(alpha=0.5) +
+    scale_size(range = c(.1, 24), name="Job Level")
+```
+
+```{r, echo=FALSE}
+ggplot(case2, 
+       aes(x = Gender, 
+           fill = Department)) + 
+  geom_bar(position = "dodge") + labs(title = "Department Population by Gender")
+
+#Histo of age by department
+```
+
+```{r, echo=FALSE}
+library("lattice")
+ 
+case2$Gender = as.numeric(c("Male" = "0", "Female" = "1")[case2$Gender])
+
+levelplot( JobInvolvement ~ as.numeric(Gender)*JobLevel, data=case2, xlab="Gender", ylab="Job Level",
+          main="Correlation Between Gender and Job Level As Applies To Job Involvement")
+
+
+```
